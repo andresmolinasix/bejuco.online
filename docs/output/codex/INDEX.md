@@ -58,6 +58,14 @@
 
 **Verificación pendiente:** completar `./gradlew.bat assembleDebug --no-daemon`; Gradle se descargó e inició, pero no produjo un APK verificable durante la inicialización.
 
+## C-008 — Verificación del build local
+
+**Input:** Cerrar la verificación pendiente de C-007 ejecutando `./gradlew.bat assembleDebug --no-daemon`.
+
+**Output:** El build falló inicialmente por dos dependencias del entorno ausentes: JDK 21 (el proyecto fija `languageVersion=21`; la máquina solo tenía JDK 11/17) y el Android SDK (`ANDROID_HOME` apuntaba a una ruta sin inicializar). Se instaló un JDK 21 (Eclipse Temurin) en el perfil de usuario y se completó la instalación del SDK vía el asistente de Android Studio (Platform 34 y 37, Build-Tools 37.0.0). Con ambos resueltos, `assembleDebug` terminó en `BUILD SUCCESSFUL` y generó los APKs de debug (`arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`, `universal`) en `app/build/outputs/apk/debug/`.
+
+**Decisión final:** El build local queda verificado. Se descartó agregar el plugin `foojay-resolver-convention` para auto-provisionar el JDK porque `gradle/verification-metadata.xml` rechaza artefactos no confiados explícitamente; requerir JDK 21 y Android SDK Platform 37 / Build-Tools 37.0.0 preinstalados en la máquina de desarrollo queda como requisito documentado en vez de automatizarlo.
+
 ## Referencia normativa
 
 - Arquitectura: `docs/2-MAESTRO_DE_ARQUITECTURA.md`.
