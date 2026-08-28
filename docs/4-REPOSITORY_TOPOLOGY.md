@@ -45,6 +45,14 @@ El repositorio `andresmolinasix/bejuco.online` se usa como la implementación An
 - Implementación futura en Swift/SwiftUI/Core Bluetooth.
 - Consume `Bejuco Protocol v1`; no depende del código Kotlin.
 
+## Fuente de verdad compartida
+
+[`bejuco-platform`](https://github.com/andresmolinasix/bejuco-platform) mantiene la arquitectura general y `Bejuco Protocol v1`.
+
+- Arquitectura o protocolo: `bejuco-platform`.
+- Android, BLE, Room o BitChat: `bejuco.online`.
+- iOS consume el protocolo desde `bejuco-platform`; no copia esta documentación.
+
 ## Restricciones explícitas
 
 No crear dentro de `bejuco.online` las carpetas siguientes como si fueran otros productos:
@@ -56,7 +64,7 @@ bejuco.online/
 └── mobile/android/   # No
 ```
 
-El código Android de Bejuco vive en la raíz del repositorio, partiendo de la estructura Gradle de BitChat. Los repositorios de plataforma e iOS se crearán como repositorios hermanos cuando el MVP Android y la primera versión del protocolo lo justifiquen.
+El código Android de Bejuco vive en la raíz del repositorio, partiendo de la estructura Gradle de BitChat. Los repositorios de plataforma e iOS son repositorios hermanos.
 
 ## Fases
 
