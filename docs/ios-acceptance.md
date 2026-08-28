@@ -9,6 +9,7 @@
 - [x] El almacén deduplica paquetes con el mismo `messageId`.
 - [x] El envelope iOS usa Ed25519, hexadecimal y `originId` compatibles con Android.
 - [x] El codec iOS implementa el paquete BitChat v1/v2, compresión y fragmentación.
+- [x] El demo local permite validar persistencia, notificación y pestaña `Alertas` sin BLE.
 
 ## Manuales en dispositivo físico
 

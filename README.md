@@ -17,6 +17,7 @@ El proyecto ya está configurado como `Bejuco.xcodeproj` y compila con Xcode 26.
 - Cola de entrega HTTP `POST /v1/messages/batch` cuando vuelve Internet.
 - BGProcessingTask para reintentar consulta USGS y entrega del gateway.
 - Notificaciones locales de emergencia para `DISTRESS` recibidos por mesh y una pestaña dedicada `Alertas`.
+- Demo local en la pantalla `Inicio` para validar el flujo de alertas en el simulador sin BLE ni GCP.
 - Pruebas unitarias de protocolo, firma, relay y deduplicación.
 
 ## Abrir en Xcode
@@ -62,6 +63,13 @@ programa una notificación local con banner y sonido. El permiso se solicita al
 primer arranque y se puede revisar en `Ajustes > Alertas de emergencia`.
 
 La ejecución en segundo plano de iOS depende de las reglas de Core Bluetooth del sistema; `Info.plist` ya declara `bluetooth-central`, `bluetooth-peripheral` y `processing`, pero el comportamiento debe probarse en dispositivos reales y con batería/permiso reales.
+
+## Demo sin Bluetooth
+
+En `Inicio > Demo local`, pulsa `Simular alerta DISTRESS`. La app crea un
+envelope firmado, lo persiste, muestra la notificación local y abre `Alertas`.
+El paquete queda identificado como `DEMO LOCAL`, con estado local entregado, y
+no se envía al gateway GCP.
 
 ## Prueba con Android
 

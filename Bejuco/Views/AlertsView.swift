@@ -60,9 +60,9 @@ private struct AlertRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(record.envelope.payload["name"]?.nilIfEmpty ?? "Solicitud de ayuda")
                     .font(.headline)
-                Text(record.envelope.priority.title)
+                Text(isDemo ? "DEMO LOCAL" : record.envelope.priority.title)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.bejucoAlert)
+                    .foregroundStyle(isDemo ? .orange : Color.bejucoAlert)
                 Text(record.envelope.createdDate.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -82,6 +82,10 @@ private struct AlertRow: View {
             }
         }
         .padding(.vertical, 5)
+    }
+
+    private var isDemo: Bool {
+        record.envelope.payload["demo"] == "true"
     }
 }
 

@@ -15,6 +15,7 @@ struct DashboardView: View {
                 emergencyActions
                 earthquakeCard
                 packageSummary
+                demoCard
             }
             .padding()
         }
@@ -165,6 +166,29 @@ struct DashboardView: View {
         }
     }
 
+    private var demoCard: some View {
+        BejucoCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Demo local", systemImage: "play.rectangle.fill")
+                    .font(.headline)
+                Text("Simula un DISTRESS entrante para probar la notificación y la pestaña Alertas sin Bluetooth ni Internet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button {
+                    _ = app.simulateIncomingDistress()
+                } label: {
+                    Label("Simular alerta DISTRESS", systemImage: "bell.badge.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(Color.bejucoAlert)
+                Text("El registro queda marcado como DEMO LOCAL y no se sincroniza con GCP.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private func metric(value: String, label: String) -> some View {
         VStack(spacing: 3) {
             Text(value).font(.title3.bold())
@@ -173,4 +197,3 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity)
     }
 }
-

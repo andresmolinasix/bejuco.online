@@ -162,7 +162,36 @@ final class AppModel: ObservableObject {
         return false
     }
 
-    private func receive(_ envelope: BejucoEnvelope, via transport: MeshEnvelopeTransport) {
+    /// Creates a local incoming DISTRESS so the simulator can demonstrate the
+    /// receive -> verify -> persist -> notify -> Alertas flow without BLE or
+    /// sending the synthetic packet to the GCP gateway.
+    @discardableResult
+    func simulateIncomingDistress() -> Bool {
+        let envelope = BejucoEnvelope(
+            messageId: "demo-\(UUID().uuidString)",
+            eventId: "demo-event",
+            type: .distress,
+            originId: identity.nodeId,
+            location: location.currentLocation ?? GeoLocation(lat: 5.69, lon: -76.66, accuracy: 0),
+            priority: .sos,
+            payload: [
+                "name": "Android demo",
+                "phone": "300 000 0000",
+                "contactName": "Equipo de rescate",
+                "notes": "Alerta simulada localmente para validar iOS.",
+                "demo": "true"
+            ]
+        )
+        let signed = identity.sign(envelope)
+        receive(signed, via: .bitChat, synchronize: false)
+        return store.records.contains { $0.id == signed.messageId }
+    }
+
+    private func receive(
+        _ envelope: BejucoEnvelope,
+        via transport: MeshEnvelopeTransport,
+        synchronize: Bool = true
+    ) {
         guard envelope.version <= BejucoEnvelope.protocolVersion else {
             feedbackMessage = "Se ignoró un paquete de una versión futura."
             return
@@ -184,18 +213,23 @@ final class AppModel: ObservableObject {
             return
         }
 
-        if store.insert(envelope) {
+        if store.insert(envelope, uploadState: synchronize ? .pending : .uploaded) {
             if envelope.type == .distress {
                 notifications.scheduleDistressNotification(for: envelope)
             }
             // BitChat already relays the opaque packet with a decremented outer
             // TTL. The legacy transport still needs the app-level inventory
             // announcement to perform store-and-forward.
-            if case .legacy = transport {
+            if synchronize, case .legacy = transport {
                 mesh.announceLocalInventory()
             }
-            gateway.syncPending()
-            feedbackMessage = "Nuevo paquete recibido y persistido."
+            if synchronize {
+                gateway.syncPending()
+                feedbackMessage = "Nuevo paquete recibido y persistido."
+            } else {
+                selectedTab = .alerts
+                feedbackMessage = "Demo local creado. No se envió a GCP."
+            }
         }
     }
 }
