@@ -140,6 +140,7 @@ class PacketProcessor(private val myPeerID: String) {
             MessageType.LEAVE -> handleLeave(routed)
             MessageType.FRAGMENT -> handleFragment(routed)
             MessageType.REQUEST_SYNC -> handleRequestSync(routed)
+            MessageType.BEJUCO_ENVELOPE -> delegate?.handleBejucoEnvelope(routed)
             else -> {
                 // Handle private packet types (address check required)
                 if (packetRelayManager.isPacketAddressedToMe(packet)) {
@@ -301,6 +302,9 @@ interface PacketProcessorDelegate {
     fun handleLeave(routed: RoutedPacket)
     fun handleFragment(packet: BitchatPacket): BitchatPacket?
     fun handleRequestSync(routed: RoutedPacket)
+    // Default no-op: only BluetoothMeshService wires an EmergencyPacketSink for now
+    // (docs/3 §2 scopes the MVP to BLE; MeshCore/Wi-Fi Aware is untouched follow-up).
+    fun handleBejucoEnvelope(routed: RoutedPacket) {}
     
     // Communication
     fun sendAnnouncementToPeer(peerID: String)

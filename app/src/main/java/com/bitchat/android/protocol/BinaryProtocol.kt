@@ -19,7 +19,9 @@ enum class MessageType(val value: UByte) {
     FRAGMENT(0x20u), // Fragmentation for large packets
     REQUEST_SYNC(0x21u), // GCS-based sync request
     FILE_TRANSFER(0x22u), // New: File transfer packet (BLE voice notes, etc.)
-    VOICE_FRAME(0x29u); // Ephemeral live push-to-talk frame; never added to gossip sync
+    VOICE_FRAME(0x29u), // Ephemeral live push-to-talk frame; never added to gossip sync
+    BEJUCO_ENVELOPE(0x30u); // Opaque Bejuco Protocol v1 envelope (see protocol/BejucoEnvelope.kt);
+    // mesh only routes this by tag and never decodes the payload (docs/3 §5 "mesh/").
 
     companion object {
         fun fromValue(value: UByte): MessageType? {

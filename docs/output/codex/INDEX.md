@@ -66,6 +66,26 @@
 
 **Decisión final:** El build local queda verificado. Se descartó agregar el plugin `foojay-resolver-convention` para auto-provisionar el JDK porque `gradle/verification-metadata.xml` rechaza artefactos no confiados explícitamente; requerir JDK 21 y Android SDK Platform 37 / Build-Tools 37.0.0 preinstalados en la máquina de desarrollo queda como requisito documentado en vez de automatizarlo.
 
+## C-009 — Implementación de ADR-0003: BejucoEnvelope y persistencia
+
+**Input:** Implementar la decisión de ADR-0003 (`docs/adr/0003-persistent-store-carry-forward.md`): Room/SQLite como única fuente de verdad para mensajes de emergencia, separado de `mesh/`.
+
+**Output:** `protocol/BejucoEnvelope.kt` (paquete Bejuco Protocol v1, identidad autocertificada vía `originId` derivado de `originPublicKey`, firma Ed25519 que excluye `hopCount` igual que `BitchatPacket` excluye `ttl`). `storage/EmergencyMessageDatabase.kt` — SQLite puro vía `SQLiteOpenHelper` (no Room: el proyecto usa dependency locking estricto y `verification-metadata.xml`, y los artefactos de Room/KSP no están confiados ahí; se optó por replicar el patrón ya probado de `services/ConversationRepository.kt` en vez de tocar esos archivos de seguridad). `emergency/EmergencyMessageRepository.kt` — límite de persistencia y validación, deduplica por `messageId`, nunca borra filas al expirar. Cubierto por 10 tests unitarios (firma, tampering, expiración, deduplicación, persistencia entre instancias del repositorio).
+
+**Decisión final:** SQLite puro en vez de Room real, documentado como desviación deliberada de la letra de ADR-0003 (que nombra "Room") a favor de evitar fricción de build; el resto del diseño de la ADR se implementó tal cual se aceptó.
+
+## C-010 — Relay entre `mesh/` y `emergency/`
+
+**Input:** Conectar el transporte BLE existente (heredado de BitChat) con `EmergencyMessageRepository`, respetando que `mesh/` no debe interpretar paquetes de emergencia (docs/3 §5).
+
+**Output:** Un tag de protocolo nuevo `MessageType.BEJUCO_ENVELOPE`. Dentro de `mesh/`: una interfaz de un solo método, `EmergencyPacketSink`, y una línea de despacho en `PacketProcessor` — ningún archivo de `mesh/` importa `BejucoEnvelope` ni `EmergencyMessageRepository`. `emergency/EmergencyRelay.kt` es el único punto que conoce ambos mundos: decodifica bytes entrantes y llama a `receiveEnvelope()`; arma, firma, persiste localmente y transmite un DISTRESS saliente vía `BluetoothMeshService.sendEmergencyEnvelope()` (calcado de `sendFileBroadcast()` existente). Cableado en `service/MeshServiceHolder.kt`, el único punto de construcción de `BluetoothMeshService`.
+
+Verificado: compila limpio; la suite completa de tests (608 casos) da los mismos 22 fallos preexistentes con y sin este cambio (aislado con `git stash` sobre el mismo commit) — cero regresión atribuible a este trabajo.
+
+**Decisión final:** Alcance limitado a `BluetoothMeshService` (transporte BLE, lo único que pide el MVP); `MeshCore`/Wi-Fi Aware queda sin tocar, fuera de alcance documentado.
+
+**Verificación pendiente:** no existe todavía una prueba de integración real del relay (requeriría simular `BluetoothMeshService` completo) ni una prueba en hardware A → B → C sobre BLE físico — sigue siendo el hito de aceptación del MVP (C-006) sin demostrar.
+
 ## Referencia normativa
 
 - Arquitectura: `docs/2-MAESTRO_DE_ARQUITECTURA.md`.

@@ -1,5 +1,6 @@
 package com.bitchat.android.protocol
 
+import com.bitchat.android.util.toHexString
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
@@ -117,8 +118,6 @@ data class BejucoEnvelope(
         }
     }
 }
-
-internal fun ByteArray.toHexString(): String = joinToString("") { "%02x".format(it) }
 
 internal fun String.hexToByteArrayOrNull(): ByteArray? {
     if (length % 2 != 0) return null

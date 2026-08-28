@@ -52,6 +52,9 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
 
     // My peer identification - derived from persisted Noise identity fingerprint (first 16 hex chars)
     val myPeerID: String = encryptionService.getIdentityFingerprint().take(16)
+
+    // Set by emergency/EmergencyRelay; mesh/ never imports BejucoEnvelope itself (see EmergencyPacketSink).
+    var emergencyDelegate: EmergencyPacketSink? = null
     private val peerManager = PeerManager()
     private val fragmentManager = FragmentManager()
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -616,6 +619,15 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
 
             override fun handleVoiceFrame(routed: RoutedPacket): Boolean =
                 messageHandler.handlePublicVoiceFrame(routed)
+
+            override fun handleBejucoEnvelope(routed: RoutedPacket) {
+                // Opaque forward only: this class never parses routed.packet.payload.
+                emergencyDelegate?.onEmergencyEnvelopeReceived(
+                    routed.packet.payload,
+                    routed.peerID ?: "unknown"
+                )
+                try { gossipSyncManager.onPublicPacketSeen(routed.packet) } catch (_: Exception) { }
+            }
             
             override fun handleLeave(routed: RoutedPacket) {
                 serviceScope.launch { messageHandler.handleLeave(routed) }
@@ -905,6 +917,33 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
         if (signed.signature?.size != 64) return false
         broadcastRoutedPacket(RoutedPacket(signed))
         return true
+    }
+
+    /**
+     * Broadcasts an already-serialized Bejuco envelope (see emergency/EmergencyRelay.kt)
+     * as an opaque payload. This class does not decode it - same non-inspection
+     * contract as [handleBejucoEnvelope] on the receive side.
+     */
+    fun sendEmergencyEnvelope(payload: ByteArray) {
+        try {
+            serviceScope.launch {
+                val packet = BitchatPacket(
+                    version = 1u,
+                    type = MessageType.BEJUCO_ENVELOPE.value,
+                    senderID = hexStringToByteArray(myPeerID),
+                    recipientID = SpecialRecipients.BROADCAST,
+                    timestamp = System.currentTimeMillis().toULong(),
+                    payload = payload,
+                    signature = null,
+                    ttl = MAX_TTL
+                )
+                val signed = signPacketBeforeBroadcast(packet)
+                broadcastRoutedPacket(RoutedPacket(signed))
+                try { gossipSyncManager.onPublicPacketSeen(signed) } catch (_: Exception) { }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "sendEmergencyEnvelope failed (size=${payload.size}): ${e.message}", e)
+        }
     }
 
     fun sendFileBroadcast(file: com.bitchat.android.model.BitchatFilePacket) {

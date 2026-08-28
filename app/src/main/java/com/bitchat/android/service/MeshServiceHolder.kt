@@ -1,6 +1,7 @@
 package com.bitchat.android.service
 
 import android.content.Context
+import com.bitchat.android.emergency.EmergencyRelay
 import com.bitchat.android.mesh.BluetoothMeshService
 import com.bitchat.android.mesh.UnifiedMeshService
 import com.bitchat.android.model.RoutedPacket
@@ -72,6 +73,10 @@ object MeshServiceHolder {
     var meshService: BluetoothMeshService? = null
         private set
 
+    private fun attachEmergencyRelay(context: Context, service: BluetoothMeshService) {
+        EmergencyRelay(context.applicationContext, service).attach()
+    }
+
     @Volatile
     var unifiedMeshService: UnifiedMeshService? = null
         private set
@@ -93,6 +98,7 @@ object MeshServiceHolder {
                     }
                     val created = BluetoothMeshService(context.applicationContext)
                     android.util.Log.i(TAG, "Created new BluetoothMeshService (replacement)")
+                    attachEmergencyRelay(context, created)
                     meshService = created
                     unifiedMeshService = null
                     created
@@ -100,6 +106,7 @@ object MeshServiceHolder {
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Error checking service reusability; creating new instance: ${e.message}")
                 val created = BluetoothMeshService(context.applicationContext)
+                attachEmergencyRelay(context, created)
                 meshService = created
                 unifiedMeshService = null
                 created
@@ -107,6 +114,7 @@ object MeshServiceHolder {
         }
         val created = BluetoothMeshService(context.applicationContext)
         android.util.Log.i(TAG, "Created new BluetoothMeshService (no existing instance)")
+        attachEmergencyRelay(context, created)
         meshService = created
         unifiedMeshService = null
         return created
