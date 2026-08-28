@@ -32,6 +32,11 @@ enum BejucoBLE {
     static let bitChatPacket = CBUUID(string: "A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D")
 }
 
+enum MeshEnvelopeTransport {
+    case legacy
+    case bitChat
+}
+
 @MainActor
 final class MeshService: NSObject, ObservableObject {
     @Published private(set) var state: MeshRuntimeState = .starting
@@ -42,7 +47,7 @@ final class MeshService: NSObject, ObservableObject {
     let nodeId: String
 
     var messageProvider: (() -> [BejucoEnvelope])?
-    var onEnvelopeReceived: ((BejucoEnvelope) -> Void)?
+    var onEnvelopeReceived: ((BejucoEnvelope, MeshEnvelopeTransport) -> Void)?
 
     private var centralManager: CBCentralManager!
     private var peripheralManager: CBPeripheralManager!
@@ -61,7 +66,10 @@ final class MeshService: NSObject, ObservableObject {
     private var subscribedBitChatCentrals: [UUID: CBCentral] = [:]
     private var inventoryPages: [UUID: InventoryAssembly] = [:]
     private var transferBuffers: [UUID: [String: TransferAssembly]] = [:]
-    private var bitChatFragmentBuffers: [UUID: [String: BitChatFragmentAssembly]] = [:]
+    // Fragment sets are keyed by sender + fragment ID, matching the upstream
+    // BitChat link layer and preventing collisions between simultaneous peers.
+    private var bitChatFragmentBuffers: [String: BitChatFragmentAssembly] = [:]
+    private var bitChatBufferedBytes = 0
     private var pendingWrites: [UUID: [PendingWrite]] = [:]
     private var activeWrites = Set<UUID>()
     private var pendingNotifications: [UUID: [PendingNotification]] = [:]
@@ -125,6 +133,7 @@ final class MeshService: NSObject, ObservableObject {
         inventoryPages.removeAll()
         transferBuffers.removeAll()
         bitChatFragmentBuffers.removeAll()
+        bitChatBufferedBytes = 0
         subscribedCentrals.removeAll()
         subscribedBitChatCentrals.removeAll()
         pendingNotifications.removeAll()
@@ -175,9 +184,9 @@ final class MeshService: NSObject, ObservableObject {
 
         let bitChatPacket = CBMutableCharacteristic(
             type: BejucoBLE.bitChatPacket,
-            properties: [.write, .writeWithoutResponse, .notify],
+            properties: [.read, .write, .writeWithoutResponse, .notify],
             value: nil,
-            permissions: [.writeable]
+            permissions: [.readable, .writeable]
         )
         let bitChatService = CBMutableService(type: BejucoBLE.bitChatService, primary: true)
         bitChatService.characteristics = [bitChatPacket]
@@ -186,7 +195,10 @@ final class MeshService: NSObject, ObservableObject {
         peripheralManager.add(bitChatService)
 
         peripheralManager.startAdvertising([
-            CBAdvertisementDataServiceUUIDsKey: [BejucoBLE.service, BejucoBLE.bitChatService],
+            // Two 128-bit UUIDs plus a local name can exceed the 31-byte BLE
+            // advertising payload. BitChat is the discoverable transport;
+            // the legacy service remains available after GATT discovery.
+            CBAdvertisementDataServiceUUIDsKey: [BejucoBLE.bitChatService],
             CBAdvertisementDataLocalNameKey: "Bejuco-\(nodeId.prefix(6))"
         ])
         lastEvent = "Anunciando y escuchando nodos"
@@ -278,7 +290,7 @@ final class MeshService: NSObject, ObservableObject {
               envelope.version <= BejucoEnvelope.protocolVersion else { return }
 
         lastEvent = "Paquete recibido por mesh"
-        onEnvelopeReceived?(envelope.relayed())
+        onEnvelopeReceived?(envelope.relayed(), .legacy)
     }
 
     private func sendEnvelope(_ envelope: BejucoEnvelope, to peerID: UUID) {
@@ -350,14 +362,55 @@ final class MeshService: NSObject, ObservableObject {
             recipientID: BitChatPacketCodec.broadcastRecipient,
             payload: payload
         )
-        guard let frames = BitChatPacketCodec.prepareForBLE(packet) else {
+        if sendBitChatPacket(packet, to: peerID) {
+            lastEvent = "Paquete Bejuco enviado por BitChat"
+        }
+    }
+
+    /// Sends an opaque BitChat packet using the negotiated link capacity.
+    /// BEJUCO and FRAGMENT frames are intentionally unpadded, as in Android's
+    /// BLEPacketPaddingPolicy; only the packet codec decides whether the
+    /// original payload needs compression or fragmentation.
+    @discardableResult
+    private func sendBitChatPacket(_ packet: BitChatPacket, to peerID: UUID) -> Bool {
+        let frameLimit = bitChatFrameLimit(for: peerID)
+        let frames: [Data]?
+        if packet.type == BitChatPacketCodec.fragmentType {
+            // A fragment is already the transport unit. Nested fragmentation
+            // is not part of the shared BitChat protocol.
+            if let frame = BitChatPacketCodec.encode(packet, padding: false), frame.count <= frameLimit {
+                frames = [frame]
+            } else {
+                frames = nil
+            }
+        } else {
+            frames = BitChatPacketCodec.prepareForBLE(packet, maxFrameSize: frameLimit)
+        }
+
+        guard let frames else {
             lastEvent = "No se pudo preparar el paquete para Android"
-            return
+            return false
         }
         for frame in frames {
             sendBitChatFrame(frame, to: peerID)
         }
-        lastEvent = "Paquete Bejuco enviado por BitChat"
+        return true
+    }
+
+    private func bitChatFrameLimit(for peerID: UUID) -> Int {
+        if let peripheral = peripherals[peerID], bitChatPacketCharacteristics[peerID] != nil {
+            let limit = peripheral.maximumWriteValueLength(for: .withResponse)
+            if limit > 0 {
+                return min(BitChatPacketCodec.fragmentSizeThreshold, limit)
+            }
+        }
+        if let central = subscribedBitChatCentrals[peerID] {
+            let limit = central.maximumUpdateValueLength
+            if limit > 0 {
+                return min(BitChatPacketCodec.fragmentSizeThreshold, limit)
+            }
+        }
+        return BitChatPacketCodec.fragmentSizeThreshold
     }
 
     private func sendBitChatFrame(_ data: Data, to peerID: UUID) {
@@ -374,20 +427,28 @@ final class MeshService: NSObject, ObservableObject {
             return
         }
 
+        // Do not let a packet originated by this node circulate indefinitely
+        // after a reconnect or a multi-path relay.
+        guard packet.senderID != localBitChatSenderID else { return }
+
         if packet.type == BitChatPacketCodec.fragmentType {
             handleBitChatFragment(packet, from: peerID)
         } else {
-            handleBitChatPacket(packet)
+            relayBitChatPacket(packet, excluding: peerID)
+            if packet.type == BitChatPacketCodec.bejucoEnvelopeType {
+                handleBitChatPacket(packet)
+            }
         }
     }
 
     private func handleBitChatPacket(_ packet: BitChatPacket) {
         guard packet.type == BitChatPacketCodec.bejucoEnvelopeType,
+              isBitChatBroadcast(packet.recipientID),
               let envelope = try? AndroidEnvelopeCodec.decode(packet.payload),
               envelope.version <= BejucoEnvelope.protocolVersion else { return }
 
         lastEvent = "Paquete Bejuco recibido por BitChat"
-        onEnvelopeReceived?(envelope.relayed())
+        onEnvelopeReceived?(envelope.relayed(), .bitChat)
     }
 
     private func handleBitChatFragment(_ packet: BitChatPacket, from peerID: UUID) {
@@ -395,38 +456,117 @@ final class MeshService: NSObject, ObservableObject {
               fragment.total <= BitChatPacketCodec.maxFragments,
               !fragment.data.isEmpty else { return }
 
-        var peerFragments = bitChatFragmentBuffers[peerID] ?? [:]
-        var assembly = peerFragments[fragment.fragmentID.hexString] ?? BitChatFragmentAssembly(
+        cleanupExpiredBitChatFragments()
+
+        let assemblyID = "\(packet.senderID.hexString):\(fragment.fragmentID.hexString)"
+        let isNewAssembly = bitChatFragmentBuffers[assemblyID] == nil
+        if isNewAssembly && bitChatFragmentBuffers.count >= BitChatPacketCodec.maxActiveFragmentSets {
+            return
+        }
+
+        var assembly = bitChatFragmentBuffers[assemblyID] ?? BitChatFragmentAssembly(
             total: fragment.total,
             originalType: fragment.originalType,
-            chunks: [:]
+            chunks: [:],
+            bufferedBytes: 0,
+            lastUpdated: Date()
         )
         guard assembly.total == fragment.total, assembly.originalType == fragment.originalType else {
-            peerFragments[fragment.fragmentID.hexString] = nil
-            bitChatFragmentBuffers[peerID] = peerFragments
+            removeBitChatFragmentAssembly(id: assemblyID)
+            return
+        }
+
+        let oldChunkSize = assembly.chunks[fragment.index]?.count ?? 0
+        let newBufferedBytes = assembly.bufferedBytes - oldChunkSize + fragment.data.count
+        guard newBufferedBytes <= BitChatPacketCodec.maxFragmentTotalBytes else {
+            removeBitChatFragmentAssembly(id: assemblyID)
+            return
+        }
+
+        let delta = fragment.data.count - oldChunkSize
+        if bitChatBufferedBytes + delta > BitChatPacketCodec.maxGlobalFragmentTotalBytes {
+            if isNewAssembly {
+                removeBitChatFragmentAssembly(id: assemblyID)
+            }
             return
         }
 
         assembly.chunks[fragment.index] = fragment.data
-        let bufferedBytes = assembly.chunks.values.reduce(0) { $0 + $1.count }
-        guard bufferedBytes <= 1_048_576 else {
-            peerFragments[fragment.fragmentID.hexString] = nil
-            bitChatFragmentBuffers[peerID] = peerFragments
-            return
-        }
+        assembly.bufferedBytes = newBufferedBytes
+        assembly.lastUpdated = Date()
+        bitChatBufferedBytes += delta
 
         if assembly.chunks.count == assembly.total {
             let assembled = (0..<assembly.total).reduce(into: Data()) { data, index in
                 data.append(assembly.chunks[index] ?? Data())
             }
-            peerFragments[fragment.fragmentID.hexString] = nil
-            bitChatFragmentBuffers[peerID] = peerFragments
+            removeBitChatFragmentAssembly(id: assemblyID)
             guard let original = BitChatPacketCodec.decode(assembled),
                   original.type == assembly.originalType else { return }
-            handleBitChatPacket(original)
+
+            // Android forwards the original packet with a decremented outer
+            // TTL, while its local reassembled copy is processed with TTL=0.
+            relayBitChatPacket(original, excluding: peerID)
+            guard original.type == BitChatPacketCodec.bejucoEnvelopeType else { return }
+            let localPacket = BitChatPacket(
+                version: original.version,
+                type: original.type,
+                ttl: 0,
+                timestamp: original.timestamp,
+                senderID: original.senderID,
+                recipientID: original.recipientID,
+                payload: original.payload,
+                signature: original.signature,
+                route: original.route
+            )
+            handleBitChatPacket(localPacket)
         } else {
-            peerFragments[fragment.fragmentID.hexString] = assembly
-            bitChatFragmentBuffers[peerID] = peerFragments
+            bitChatFragmentBuffers[assemblyID] = assembly
+        }
+    }
+
+    private var localBitChatSenderID: Data {
+        BitChatPacketCodec.data(fromHex: nodeId) ?? Data()
+    }
+
+    private func isBitChatBroadcast(_ recipientID: Data?) -> Bool {
+        recipientID == nil || recipientID == BitChatPacketCodec.broadcastRecipient
+    }
+
+    private func relayBitChatPacket(_ packet: BitChatPacket, excluding ingressPeerID: UUID?) {
+        guard packet.ttl > 0,
+              isBitChatBroadcast(packet.recipientID) else { return }
+
+        let relayPacket = BitChatPacket(
+            version: packet.version,
+            type: packet.type,
+            ttl: packet.ttl - 1,
+            timestamp: packet.timestamp,
+            senderID: packet.senderID,
+            recipientID: packet.recipientID,
+            payload: packet.payload,
+            signature: packet.signature,
+            route: packet.route
+        )
+        var peerIDs = Set(bitChatPacketCharacteristics.keys)
+        peerIDs.formUnion(subscribedBitChatCentrals.keys)
+        for peerID in peerIDs where peerID != ingressPeerID {
+            sendBitChatPacket(relayPacket, to: peerID)
+        }
+    }
+
+    private func removeBitChatFragmentAssembly(id: String) {
+        if let assembly = bitChatFragmentBuffers.removeValue(forKey: id) {
+            bitChatBufferedBytes = max(0, bitChatBufferedBytes - assembly.bufferedBytes)
+        }
+    }
+
+    private func cleanupExpiredBitChatFragments(now: Date = Date()) {
+        let expiredIDs = bitChatFragmentBuffers.compactMap { id, assembly in
+            now.timeIntervalSince(assembly.lastUpdated) >= BitChatPacketCodec.fragmentTimeout ? id : nil
+        }
+        for id in expiredIDs {
+            removeBitChatFragmentAssembly(id: id)
         }
     }
 
@@ -471,13 +611,16 @@ final class MeshService: NSObject, ObservableObject {
 
     private func flushNotifications() {
         for peerID in Array(pendingNotifications.keys) {
-            guard let central = subscribedCentrals[peerID], var queue = pendingNotifications[peerID] else { continue }
+            guard var queue = pendingNotifications[peerID] else { continue }
             while !queue.isEmpty {
                 let pending = queue.removeFirst()
+                let isSubscribed = subscribedCentrals[pending.central.identifier] != nil ||
+                    subscribedBitChatCentrals[pending.central.identifier] != nil
+                guard isSubscribed else { continue }
                 let delivered = peripheralManager.updateValue(
                     pending.data,
                     for: pending.characteristic,
-                    onSubscribedCentrals: [central]
+                    onSubscribedCentrals: [pending.central]
                 )
                 if !delivered {
                     queue.insert(pending, at: 0)
@@ -503,6 +646,8 @@ private struct BitChatFragmentAssembly {
     let total: Int
     let originalType: UInt8
     var chunks: [Int: Data]
+    var bufferedBytes: Int
+    var lastUpdated: Date
 }
 
 private enum MeshWriteKind {
@@ -593,7 +738,6 @@ extension MeshService: @preconcurrency CBCentralManagerDelegate {
         pendingWrites[id] = nil
         activeWrites.remove(id)
         pendingNotifications[id] = nil
-        bitChatFragmentBuffers[id] = nil
         updateConnectedPeerCount()
         if central.state == .poweredOn { startScanning() }
     }

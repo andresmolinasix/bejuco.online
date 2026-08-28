@@ -135,4 +135,31 @@ final class BejucoTests: XCTestCase {
         XCTAssertEqual(restored.payload, packet.payload)
         XCTAssertEqual(fragments.map(\.total).first, fragments.count)
     }
+
+    func testBitChatFragmentsRespectNegotiatedBLELimit() throws {
+        let payload = Data((0..<1_800).map { UInt8(($0 * 37 + 11) % 251) })
+        let packet = BitChatPacket(
+            type: BitChatPacketCodec.bejucoEnvelopeType,
+            ttl: 7,
+            timestamp: 1_735_000_123_456,
+            senderID: Data([1, 2, 3, 4, 5, 6, 7, 8]),
+            recipientID: BitChatPacketCodec.broadcastRecipient,
+            payload: payload
+        )
+
+        let frames = try XCTUnwrap(BitChatPacketCodec.prepareForBLE(packet, maxFrameSize: 182))
+        XCTAssertGreaterThan(frames.count, 1)
+        XCTAssertTrue(frames.allSatisfy { $0.count <= 182 })
+
+        let fragments = try frames.map { frame -> BitChatFragment in
+            let fragmentPacket = try XCTUnwrap(BitChatPacketCodec.decode(frame))
+            return try XCTUnwrap(BitChatFragment(payload: fragmentPacket.payload))
+        }
+        let assembled = fragments
+            .sorted { $0.index < $1.index }
+            .reduce(into: Data()) { result, fragment in result.append(fragment.data) }
+        let restored = try XCTUnwrap(BitChatPacketCodec.decode(assembled))
+
+        XCTAssertEqual(restored.payload, packet.payload)
+    }
 }

@@ -31,8 +31,8 @@ final class AppModel: ObservableObject {
         mesh.messageProvider = { [weak self] in
             self?.store.activeRelayMessages ?? []
         }
-        mesh.onEnvelopeReceived = { [weak self] envelope in
-            self?.receive(envelope)
+        mesh.onEnvelopeReceived = { [weak self] envelope, transport in
+            self?.receive(envelope, via: transport)
         }
         gateway.onConnectivityRestored = { [weak self] in
             self?.refreshEarthquakes()
@@ -155,19 +155,35 @@ final class AppModel: ObservableObject {
         return false
     }
 
-    private func receive(_ envelope: BejucoEnvelope) {
+    private func receive(_ envelope: BejucoEnvelope, via transport: MeshEnvelopeTransport) {
         guard envelope.version <= BejucoEnvelope.protocolVersion else {
             feedbackMessage = "Se ignoró un paquete de una versión futura."
             return
         }
 
-        if let signature = envelope.signature, !signature.isEmpty, !identity.verify(envelope) {
+        guard envelope.expiresAt > envelope.createdAt,
+              !envelope.isExpired,
+              envelope.hopCount >= 0,
+              envelope.hopLimit > 0,
+              envelope.hopCount <= envelope.hopLimit else {
+            lastSecurityMessage = "Se rechazó un paquete expirado o mal formado."
+            return
+        }
+
+        guard let signature = envelope.signature,
+              !signature.isEmpty,
+              identity.verify(envelope) else {
             lastSecurityMessage = "Se rechazó un paquete con firma inválida."
             return
         }
 
         if store.insert(envelope) {
-            mesh.announceLocalInventory()
+            // BitChat already relays the opaque packet with a decremented outer
+            // TTL. The legacy transport still needs the app-level inventory
+            // announcement to perform store-and-forward.
+            if case .legacy = transport {
+                mesh.announceLocalInventory()
+            }
             gateway.syncPending()
             feedbackMessage = "Nuevo paquete recibido y persistido."
         }

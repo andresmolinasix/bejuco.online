@@ -8,7 +8,7 @@
 - [x] Una firma válida se verifica después de incrementar `hopCount`.
 - [x] El almacén deduplica paquetes con el mismo `messageId`.
 - [x] El envelope iOS usa Ed25519, hexadecimal y `originId` compatibles con Android.
-- [x] El codec iOS implementa el paquete BitChat v1, compresión y fragmentación.
+- [x] El codec iOS implementa el paquete BitChat v1/v2, compresión y fragmentación.
 
 ## Manuales en dispositivo físico
 

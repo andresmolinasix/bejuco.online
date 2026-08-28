@@ -11,7 +11,7 @@ El proyecto ya está configurado como `Bejuco.xcodeproj` y compila con Xcode 26.
 - Firma Ed25519 con CryptoKit e identidad pseudónima conservada en Keychain, compatible con Android.
 - Persistencia local JSON en Application Support con protección de archivos.
 - Deduplicación por `messageId` y store-carry-forward.
-- Core Bluetooth como central y periférico simultáneamente, con el transporte BitChat de Android y el transporte nativo iOS para inventario/store-and-forward.
+- Core Bluetooth como central y periférico simultáneamente, con transporte BitChat-compatible para alertas Android↔iOS y un fallback nativo iOS para inventario/store-and-forward.
 - Estados `DISTRESS`, `SAFE` y `SUPPLY_REQUEST`.
 - Consulta del feed GeoJSON de terremotos de USGS.
 - Cola de entrega HTTP `POST /v1/messages/batch` cuando vuelve Internet.
@@ -60,7 +60,7 @@ La ejecución en segundo plano de iOS depende de las reglas de Core Bluetooth de
 
 ## Prueba con Android
 
-La interoperabilidad BLE directa ya está implementada para el contrato actual de Android: iOS anuncia y busca `F47B5E2D-4A9E-4C5A-9B3F-8E1D2C3A4B5C`, usa el characteristic `A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D`, encapsula los envelopes como `BEJUCO_ENVELOPE (0x30)` y soporta compresión, padding y fragmentación BitChat v1.
+La interoperabilidad BLE directa está implementada para el contrato actual de Android: iOS anuncia y busca `F47B5E2D-4A9E-4C5A-9B3F-8E1D2C3A4B5C`, usa el characteristic `A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D`, encapsula los envelopes como `BEJUCO_ENVELOPE (0x30)`, releva por TTL y soporta compresión, padding selectivo y fragmentación BitChat v1/v2. El detalle de la comparación con upstream está en [docs/upstream.md](/Users/leonardo/Documents/hackahon-google-app-ios/docs/upstream.md).
 
 La prueba Android↔iOS requiere dos teléfonos físicos con Bluetooth y permisos habilitados. En el Android actual los tipos Bejuco aceptados por su enum son `DISTRESS` y `SAFE`; `SUPPLY_REQUEST` continúa disponible en el transporte nativo iOS hasta que Android amplíe su contrato. El simulador solo sirve para validar UI, persistencia y codec; no sustituye una prueba BLE real.
 

@@ -80,8 +80,7 @@ final class IdentityService {
         // Android derives both its mesh peer ID and Bejuco origin ID from the
         // UTF-8 bytes of the lowercase public-key hex string, then keeps the
         // first eight digest bytes (16 hexadecimal characters).
-        let digest = SHA256.hash(data: Data(publicKey.utf8))
-        nodeId = digest.prefix(8).map { String(format: "%02x", $0) }.joined()
+        nodeId = Self.nodeId(forPublicKeyHex: publicKey)
     }
 
     func sign(_ envelope: BejucoEnvelope) -> BejucoEnvelope {
@@ -98,6 +97,7 @@ final class IdentityService {
 
     func verify(_ envelope: BejucoEnvelope) -> Bool {
         guard let encodedKey = envelope.originPublicKey,
+              Self.nodeId(forPublicKeyHex: encodedKey) == envelope.originId,
               let publicData = Data(hexString: encodedKey),
               let publicKey = try? Curve25519.Signing.PublicKey(rawRepresentation: publicData),
               let encodedSignature = envelope.signature,
@@ -106,6 +106,11 @@ final class IdentityService {
             return false
         }
         return publicKey.isValidSignature(signatureData, for: signingData)
+    }
+
+    private static func nodeId(forPublicKeyHex publicKeyHex: String) -> String {
+        let digest = SHA256.hash(data: Data(publicKeyHex.utf8))
+        return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 }
 

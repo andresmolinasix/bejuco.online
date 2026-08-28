@@ -94,6 +94,10 @@ enum BitChatPacketCodec {
     static let fragmentSizeThreshold = 512
     static let maxFragmentSize = 469
     static let maxFragments = 256
+    static let maxActiveFragmentSets = 64
+    static let maxFragmentTotalBytes = 1_048_576
+    static let maxGlobalFragmentTotalBytes = 4 * 1_048_576
+    static let fragmentTimeout: TimeInterval = 30
 
     private static let headerSizeV1 = 14
     private static let headerSizeV2 = 16
@@ -199,19 +203,25 @@ enum BitChatPacketCodec {
     }
 
     /// Prepares the same packet/fragment sequence Android sends over BLE.
-    static func prepareForBLE(_ packet: BitChatPacket) -> [Data]? {
+    static func prepareForBLE(_ packet: BitChatPacket, maxFrameSize: Int = fragmentSizeThreshold) -> [Data]? {
+        guard maxFrameSize > 0 else { return nil }
         guard let padded = encode(packet, padding: true) else { return nil }
         let fullData = MessagePadding.unpad(padded)
-        if fullData.count <= fragmentSizeThreshold {
-            return encode(packet, padding: false).map { [$0] }
+        let frameLimit = min(fragmentSizeThreshold, maxFrameSize)
+        if fullData.count <= frameLimit {
+            guard let encoded = encode(packet, padding: false), encoded.count <= frameLimit else { return nil }
+            return [encoded]
         }
 
-        let version: UInt8 = packet.route == nil || packet.route?.isEmpty == true ? 1 : 2
+        // Android selects v2 whenever route is non-null, including an empty
+        // route list. Keep that choice here even though an empty route does
+        // not set HAS_ROUTE on the wire.
+        let version: UInt8 = packet.route == nil ? 1 : 2
         let headerSize = version == 2 ? 15 : 13 // Android FragmentManager's sizing rule.
-        let routeSize = version == 2 ? 1 + (packet.route?.count ?? 0) * senderIDSize : 0
+        let routeSize = version == 2 ? 1 + min(packet.route?.count ?? 0, 255) * senderIDSize : 0
         let recipientSize = packet.recipientID == nil ? 0 : recipientIDSize
         let overhead = headerSize + senderIDSize + recipientSize + routeSize + BitChatFragment.headerSize + 16
-        let maxDataSize = min(maxFragmentSize, fragmentSizeThreshold - overhead)
+        let maxDataSize = min(maxFragmentSize, frameLimit - overhead)
         guard maxDataSize > 0 else { return nil }
 
         let total = Int(ceil(Double(fullData.count) / Double(maxDataSize)))
