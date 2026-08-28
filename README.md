@@ -16,6 +16,7 @@ El proyecto ya está configurado como `Bejuco.xcodeproj` y compila con Xcode 26.
 - Consulta del feed GeoJSON de terremotos de USGS.
 - Cola de entrega HTTP `POST /v1/messages/batch` cuando vuelve Internet.
 - BGProcessingTask para reintentar consulta USGS y entrega del gateway.
+- Notificaciones locales de emergencia para `DISTRESS` recibidos por mesh y una pestaña dedicada `Alertas`.
 - Pruebas unitarias de protocolo, firma, relay y deduplicación.
 
 ## Abrir en Xcode
@@ -55,6 +56,10 @@ El simulador sirve para UI, persistencia y protocolo, pero no reemplaza una prue
 5. Acerca C a B y confirma que C recibe el mismo `messageId`.
 6. Configura el endpoint del gateway en C y conecta C a Internet.
 7. Comprueba que el paquete pasa de `pendiente` a `entregado`.
+
+Al recibir un `DISTRESS` válido, iOS lo muestra en la pestaña `Alertas` y
+programa una notificación local con banner y sonido. El permiso se solicita al
+primer arranque y se puede revisar en `Ajustes > Alertas de emergencia`.
 
 La ejecución en segundo plano de iOS depende de las reglas de Core Bluetooth del sistema; `Info.plist` ya declara `bluetooth-central`, `bluetooth-peripheral` y `processing`, pero el comportamiento debe probarse en dispositivos reales y con batería/permiso reales.
 

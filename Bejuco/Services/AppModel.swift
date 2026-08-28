@@ -11,12 +11,14 @@ final class AppModel: ObservableObject {
     let gateway: GatewayService
     let earthquakeService: EarthquakeService
     let backgroundTasks: BackgroundTaskCoordinator
+    let notifications: NotificationService
 
     @Published private(set) var earthquakes: [EarthquakeEvent] = []
     @Published private(set) var latestEarthquake: EarthquakeEvent?
     @Published private(set) var feedbackMessage: String?
     @Published private(set) var lastSecurityMessage: String?
     @Published private(set) var isRefreshingEarthquakes = false
+    @Published var selectedTab: BejucoTab = .home
 
     init() {
         identity = IdentityService()
@@ -27,6 +29,10 @@ final class AppModel: ObservableObject {
         gateway = GatewayService(store: store, settings: settings)
         earthquakeService = EarthquakeService()
         backgroundTasks = BackgroundTaskCoordinator()
+        notifications = NotificationService()
+        notifications.onNotificationOpened = { [weak self] in
+            self?.selectedTab = .alerts
+        }
 
         mesh.messageProvider = { [weak self] in
             self?.store.activeRelayMessages ?? []
@@ -42,6 +48,7 @@ final class AppModel: ObservableObject {
     }
 
     func start() {
+        notifications.requestAuthorization()
         mesh.start()
         gateway.start()
         backgroundTasks.registerAndSchedule()
@@ -178,6 +185,9 @@ final class AppModel: ObservableObject {
         }
 
         if store.insert(envelope) {
+            if envelope.type == .distress {
+                notifications.scheduleDistressNotification(for: envelope)
+            }
             // BitChat already relays the opaque packet with a decremented outer
             // TTL. The legacy transport still needs the app-level inventory
             // announcement to perform store-and-forward.

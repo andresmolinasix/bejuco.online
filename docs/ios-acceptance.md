@@ -26,6 +26,7 @@
 - [ ] Android descubre el servicio BitChat de iOS en dos teléfonos físicos.
 - [ ] Un `DISTRESS` originado en iOS aparece en el repositorio Android.
 - [ ] Un `DISTRESS` originado en Android aparece en `Paquetes` de iOS.
+- [ ] Un `DISTRESS` originado en Android genera una notificación local y aparece en `Alertas` de iOS.
 - [ ] Un `SAFE` se intercambia en ambos sentidos.
 - [ ] Un paquete fragmentado se reensambla entre plataformas.
 

@@ -27,7 +27,7 @@ struct MessagesView: View {
     }
 }
 
-private struct MessageRow: View {
+struct MessageRow: View {
     let record: StoredMessage
 
     var body: some View {
@@ -86,7 +86,7 @@ private struct MessageRow: View {
     }
 }
 
-private struct MessageDetailView: View {
+struct MessageDetailView: View {
     let record: StoredMessage
     let identity: IdentityService
 
@@ -125,4 +125,3 @@ private struct MessageDetailView: View {
         }
     }
 }
-

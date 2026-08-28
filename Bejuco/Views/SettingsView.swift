@@ -1,9 +1,11 @@
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     @ObservedObject var settings: SettingsStore
     @ObservedObject var mesh: MeshService
     @ObservedObject var gateway: GatewayService
+    @ObservedObject var notifications: NotificationService
 
     var body: some View {
         Form {
@@ -42,6 +44,39 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Alertas de emergencia") {
+                HStack {
+                    StatusDot(color: notifications.isAuthorized ? .bejucoLeaf : .orange)
+                    Text(notifications.statusTitle)
+                        .font(.footnote)
+                    Spacer()
+                }
+
+                if notifications.isAuthorized {
+                    Text("Recibirás un banner y sonido cuando llegue un DISTRESS validado por Bluetooth.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if notifications.authorizationStatus == .denied {
+                    Text("Las notificaciones están bloqueadas. Actívalas en los ajustes de iOS para recibir alertas aunque la app esté en segundo plano.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("Abrir Ajustes de iOS") {
+                        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                        UIApplication.shared.open(url)
+                    }
+                } else {
+                    Button("Activar notificaciones") {
+                        notifications.requestAuthorization()
+                    }
+                }
+
+                if let error = notifications.lastErrorMessage {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(Color.bejucoAlert)
+                }
+            }
+
             Section("Identidad y mesh") {
                 LabeledContent("Estado", value: mesh.state.title)
                 LabeledContent("Nodos conectados", value: "\(mesh.connectedPeerCount)")
@@ -60,4 +95,3 @@ struct SettingsView: View {
         .navigationTitle("Ajustes")
     }
 }
-
