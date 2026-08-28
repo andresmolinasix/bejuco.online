@@ -100,6 +100,8 @@ Tras el reinicio: `logcat` confirmó `🆕 New verified peer` y `Verified announ
 
 **Verificación pendiente:** (1) persistencia real — apagar Bluetooth o cerrar la app en el receptor y confirmar que el mensaje sigue en la lista; (2) B → C sin A presente, con un tercer dispositivo; (3) investigar la inestabilidad de conexión (`status 19`) si afecta la confiabilidad en un escenario de más de dos nodos.
 
+**Nota de priorización (mismo día):** se intentó (1) en hardware; tras apagar Bluetooth/WiFi y reiniciar la app, el mesh no re-detectó al peer (mismo tipo de inestabilidad BLE ya señalado en el punto 3, no un bug de persistencia). Se decidió no perseguir más esto por ahora: la persistencia en SQLite ya tiene cobertura directa vía `EmergencyMessageRepositoryTest` ("a stored distress message survives a fresh repository instance"), que instancia un repositorio nuevo sobre la misma base de datos — equivalente a "el proceso murió y reabrió". Queda en backlog junto con el punto 3; se prioriza avanzar en funcionalidad.
+
 ## Referencia normativa
 
 - Arquitectura: `docs/2-MAESTRO_DE_ARQUITECTURA.md`.
