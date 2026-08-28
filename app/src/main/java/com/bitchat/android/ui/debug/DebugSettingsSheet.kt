@@ -32,6 +32,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.rotate
 import com.bitchat.android.ui.theme.BitchatFontFamily
 import com.bitchat.android.mesh.BluetoothMeshService
+import com.bitchat.android.emergency.EmergencyMessageRepository
+import com.bitchat.android.protocol.BejucoEnvelope
+import com.bitchat.android.protocol.BejucoLocation
+import com.bitchat.android.service.MeshServiceHolder
 import com.bitchat.android.services.meshgraph.MeshGraphService
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.toArgb
@@ -194,6 +198,88 @@ private fun DistributionInfoRow(label: String, value: String) {
             fontSize = 11.sp,
             color = colorScheme.onSurface.copy(alpha = 0.9f)
         )
+    }
+}
+
+/**
+ * Debug-only trigger for the A -> B -> C store-carry-forward test (docs/3 §12-13):
+ * a button to originate a test DISTRESS via [MeshServiceHolder.emergencyRelay], and a
+ * live view of [EmergencyMessageRepository.activeMessages] so a second device shows
+ * whether the envelope actually arrived and persisted. Not the final SOS UI.
+ */
+@Composable
+private fun BejucoEmergencyDebugSection(isPresented: Boolean, context: android.content.Context) {
+    val colorScheme = MaterialTheme.colorScheme
+    val repository = remember { EmergencyMessageRepository.getInstance(context) }
+    var activeMessages by remember { mutableStateOf<List<BejucoEnvelope>>(emptyList()) }
+    var lastResult by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(isPresented) {
+        if (isPresented) {
+            while (true) {
+                activeMessages = try { repository.activeMessages() } catch (_: Exception) { emptyList() }
+                kotlinx.coroutines.delay(1000)
+            }
+        }
+    }
+
+    Surface(shape = RoundedCornerShape(12.dp), color = colorScheme.surfaceVariant.copy(alpha = 0.2f)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Filled.BugReport, contentDescription = null, tint = Color(0xFFFF3B30))
+                Text("Bejuco emergency (test)", fontFamily = BitchatFontFamily, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            }
+            Text(
+                "Manual trigger for the persistence/relay test, not the final SOS screen.",
+                fontFamily = BitchatFontFamily,
+                fontSize = 11.sp,
+                color = colorScheme.onSurface.copy(alpha = 0.7f)
+            )
+            AssistChip(
+                onClick = {
+                    val relay = MeshServiceHolder.emergencyRelay
+                    if (relay == null) {
+                        lastResult = "No mesh service attached yet"
+                    } else {
+                        // Fixed test coordinates (Istmina, Chocó - docs/2 examples), not a real fix.
+                        relay.sendDistress(location = BejucoLocation(lat = 5.69, lon = -76.66, accuracy = 0f))
+                        lastResult = "DISTRESS sent at ${System.currentTimeMillis()}"
+                    }
+                },
+                label = { Text("Send test DISTRESS") }
+            )
+            lastResult?.let {
+                Text(it, fontFamily = BitchatFontFamily, fontSize = 11.sp, color = colorScheme.onSurface.copy(alpha = 0.7f))
+            }
+            Divider()
+            Text(
+                "Active emergency messages: ${activeMessages.size}",
+                fontFamily = BitchatFontFamily,
+                fontSize = 12.sp
+            )
+            if (activeMessages.isEmpty()) {
+                Text("None", fontFamily = BitchatFontFamily, fontSize = 11.sp, color = colorScheme.onSurface.copy(alpha = 0.6f))
+            } else {
+                activeMessages.forEach { envelope ->
+                    Surface(shape = RoundedCornerShape(8.dp), color = colorScheme.surface.copy(alpha = 0.6f)) {
+                        Column(Modifier.fillMaxWidth().padding(10.dp)) {
+                            Text(
+                                "${envelope.type} • ${envelope.messageId.take(8)}… • origin ${envelope.originId}",
+                                fontFamily = BitchatFontFamily,
+                                fontSize = 12.sp
+                            )
+                            val locationText = envelope.location?.let { loc -> "${loc.lat}, ${loc.lon}" } ?: "no location"
+                            Text(
+                                "hop ${envelope.hopCount}/${envelope.hopLimit} • $locationText",
+                                fontFamily = BitchatFontFamily,
+                                fontSize = 11.sp,
+                                color = colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -373,6 +459,12 @@ fun DebugSettingsSheet(
                         )
                     }
                 }
+            }
+
+            // Bejuco: manual DISTRESS trigger + persisted message list, for the A -> B -> C
+            // hardware test (docs/3 §12-13). Debug-only: not the final SOS UI.
+            item {
+                BejucoEmergencyDebugSection(isPresented = isPresented, context = context)
             }
 
             // Mesh topology visualization (moved below verbose logging)

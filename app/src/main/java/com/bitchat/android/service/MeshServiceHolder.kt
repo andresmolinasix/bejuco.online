@@ -73,8 +73,14 @@ object MeshServiceHolder {
     var meshService: BluetoothMeshService? = null
         private set
 
+    @Volatile
+    var emergencyRelay: EmergencyRelay? = null
+        private set
+
     private fun attachEmergencyRelay(context: Context, service: BluetoothMeshService) {
-        EmergencyRelay(context.applicationContext, service).attach()
+        val relay = EmergencyRelay(context.applicationContext, service)
+        relay.attach()
+        emergencyRelay = relay
     }
 
     @Volatile
@@ -150,5 +156,6 @@ object MeshServiceHolder {
         activeGossipOwners.clear()
         meshService = null
         unifiedMeshService = null
+        emergencyRelay = null
     }
 }
