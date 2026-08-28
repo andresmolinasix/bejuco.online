@@ -304,6 +304,8 @@ fun AboutSheet(
     isPresented: Boolean,
     onDismiss: () -> Unit,
     onShowDebug: (() -> Unit)? = null,
+    onShowBejucoTest: (() -> Unit)? = null,
+    onOpenCentroAcopio: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -381,6 +383,45 @@ fun AboutSheet(
                     }
 
                     if (selectedTab == AboutTab.Settings) {
+                    // Bejuco: the two demo-facing entry points, ahead of the generic app
+                    // settings below. Neither is the final SOS/supply UI (docs/5 §4-8) -
+                    // "Probar" opens the trimmed DISTRESS test flow (BejucoQuickTestSheet);
+                    // "Centro de acopio" joins the existing #centros-de-acopio channel,
+                    // reusing BitChat's channel chat as-is rather than building a new one.
+                    if (onShowBejucoTest != null || onOpenCentroAcopio != null) {
+                        item(key = "bejuco_actions") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = AboutHorizontalPadding),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                if (onShowBejucoTest != null) {
+                                    Button(
+                                        onClick = onShowBejucoTest,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            text = "Probar",
+                                            fontFamily = BitchatFontFamily
+                                        )
+                                    }
+                                }
+                                if (onOpenCentroAcopio != null) {
+                                    OutlinedButton(
+                                        onClick = onOpenCentroAcopio,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            text = "Centro de acopio",
+                                            fontFamily = BitchatFontFamily
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Appearance Section
                     item(key = "appearance") {
                         Column {

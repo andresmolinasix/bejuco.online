@@ -853,15 +853,28 @@ private fun ChatDialogs(
 
     // About sheet
     var showDebugSheet by remember { mutableStateOf(false) }
+    var showBejucoTestSheet by remember { mutableStateOf(false) }
     AboutSheet(
         isPresented = showAppInfo,
         onDismiss = onAppInfoDismiss,
-        onShowDebug = { showDebugSheet = true }
+        onShowDebug = { showDebugSheet = true },
+        onShowBejucoTest = { showBejucoTestSheet = true },
+        onOpenCentroAcopio = {
+            viewModel.joinChannel("centros-de-acopio")
+            onAppInfoDismiss()
+        }
     )
     if (showDebugSheet) {
         com.bitchat.android.ui.debug.DebugSettingsSheet(
             isPresented = showDebugSheet,
             onDismiss = { showDebugSheet = false },
+            meshService = viewModel.meshService
+        )
+    }
+    if (showBejucoTestSheet) {
+        com.bitchat.android.ui.debug.BejucoQuickTestSheet(
+            isPresented = showBejucoTestSheet,
+            onDismiss = { showBejucoTestSheet = false },
             meshService = viewModel.meshService
         )
     }

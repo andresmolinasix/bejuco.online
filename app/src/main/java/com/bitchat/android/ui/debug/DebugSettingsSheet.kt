@@ -208,7 +208,7 @@ private fun DistributionInfoRow(label: String, value: String) {
  * whether the envelope actually arrived and persisted. Not the final SOS UI.
  */
 @Composable
-private fun BejucoEmergencyDebugSection(isPresented: Boolean, context: android.content.Context) {
+internal fun BejucoEmergencyDebugSection(isPresented: Boolean, context: android.content.Context) {
     val colorScheme = MaterialTheme.colorScheme
     val repository = remember { EmergencyMessageRepository.getInstance(context) }
     var activeMessages by remember { mutableStateOf<List<BejucoEnvelope>>(emptyList()) }
