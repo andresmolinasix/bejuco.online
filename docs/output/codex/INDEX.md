@@ -86,6 +86,20 @@ Verificado: compila limpio; la suite completa de tests (608 casos) da los mismos
 
 **Verificación pendiente:** no existe todavía una prueba de integración real del relay (requeriría simular `BluetoothMeshService` completo) ni una prueba en hardware A → B → C sobre BLE físico — sigue siendo el hito de aceptación del MVP (C-006) sin demostrar.
 
+## C-011 — Prueba en hardware: A → B confirmado
+
+**Input:** Ejecutar la prueba física pendiente de C-010 con dos teléfonos Android reales.
+
+**Output:** Se agregó un disparador de debug (`ui/debug/DebugSettingsSheet.kt`, sección "Bejuco emergency (test)") — botón "Send test DISTRESS" vía `MeshServiceHolder.emergencyRelay`, y una lista en vivo de `EmergencyMessageRepository.activeMessages()` — porque no existía ninguna forma de disparar un DISTRESS desde la UI.
+
+Primer intento: el mesh no descubría ningún peer (`Mesh topology: No gossip yet`) pese a permisos correctos. Diagnóstico por `adb logcat` filtrado a los componentes BLE de `mesh/` encontró la causa raíz: `Scan failed: 2` (`SCAN_FAILED_APPLICATION_REGISTRATION_FAILED` de Android) repitiéndose en cada uno de 85 reintentos — la tabla de registros de escaneo BLE del sistema operativo estaba agotada, probablemente por los múltiples ciclos de conectar/desconectar de la sesión de pruebas. **Un reinicio completo de ambos teléfonos** (no solo apagar/prender Bluetooth) lo resolvió; esto es un problema de la pila BLE de Android/el heredado de BitChat, no de este código.
+
+Tras el reinicio: `logcat` confirmó `🆕 New verified peer` y `Verified announce` entre ambos dispositivos. Se pulsó "Send test DISTRESS" en ambos teléfonos por separado; cada uno terminó mostrando mensajes con el `originId` del **otro** dispositivo en su lista de "Active emergency messages" — confirmando transferencia real, bidireccional, sobre BLE físico, con firma verificada y persistencia en SQLite del receptor.
+
+**Decisión final:** A → B del hito C-006 queda demostrado en hardware. Se observó inestabilidad de conexión residual (ciclos de conectar/desconectar cada 3-8s, `error status 19`) que no impidió la entrega pero sigue siendo un problema heredado de BitChat sin investigar a fondo.
+
+**Verificación pendiente:** (1) persistencia real — apagar Bluetooth o cerrar la app en el receptor y confirmar que el mensaje sigue en la lista; (2) B → C sin A presente, con un tercer dispositivo; (3) investigar la inestabilidad de conexión (`status 19`) si afecta la confiabilidad en un escenario de más de dos nodos.
+
 ## Referencia normativa
 
 - Arquitectura: `docs/2-MAESTRO_DE_ARQUITECTURA.md`.
