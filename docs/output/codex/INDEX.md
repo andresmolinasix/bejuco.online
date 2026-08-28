@@ -48,9 +48,18 @@
 
 **Decisión final:** El éxito inicial se mide por persistencia y propagación oportunista, no por cantidad de pantallas o funciones.
 
+## C-007 — Inicialización del repositorio oficial
+
+**Input:** Configurar y publicar el repositorio oficial de Bejuco Android.
+
+**Output:** `main` fue publicada en `andresmolinasix/bejuco.online`; BitChat Android quedó integrado en la raíz como `upstream`. El tag `bitchat-base-v1` registra el commit base `4f828b5643ff87a5064c8d384d0a4cb64001d2b2`.
+
+**Decisión final:** Usar `bejuco.online` como implementación Android actual, conservar BitChat como referencia técnica y aplicar commits convencionales.
+
+**Verificación pendiente:** completar `./gradlew.bat assembleDebug --no-daemon`; Gradle se descargó e inició, pero no produjo un APK verificable durante la inicialización.
+
 ## Referencia normativa
 
 - Arquitectura: `docs/2-MAESTRO_DE_ARQUITECTURA.md`.
 - Implementación Android: `docs/3-BEJUCO_IMPLEMENTACION_REPOSITORIO_V1.md`.
 - Topología operativa: `docs/4-REPOSITORY_TOPOLOGY.md`.
-
