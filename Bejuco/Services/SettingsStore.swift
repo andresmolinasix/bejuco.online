@@ -3,6 +3,8 @@ import SwiftUI
 
 @MainActor
 final class SettingsStore: ObservableObject {
+    static let defaultGatewayURL = "https://bejuco-dev-ingest-api-w6gswgwgyq-uc.a.run.app/v1/messages/batch"
+
     private let defaults: UserDefaults
 
     @Published var displayName: String {
@@ -34,7 +36,12 @@ final class SettingsStore: ObservableObject {
         displayName = defaults.string(forKey: Keys.displayName) ?? ""
         phone = defaults.string(forKey: Keys.phone) ?? ""
         emergencyContact = defaults.string(forKey: Keys.emergencyContact) ?? ""
-        gatewayURL = defaults.string(forKey: Keys.gatewayURL) ?? "https://bejuco.online/v1/messages/batch"
+        let storedGatewayURL = defaults.string(forKey: Keys.gatewayURL)
+        if storedGatewayURL == nil || storedGatewayURL == "https://bejuco.online/v1/messages/batch" {
+            gatewayURL = Self.defaultGatewayURL
+        } else {
+            gatewayURL = storedGatewayURL!
+        }
         role = NodeRole(rawValue: defaults.string(forKey: Keys.role) ?? "AFFECTED") ?? .affected
         relayingEnabled = defaults.object(forKey: Keys.relayingEnabled) as? Bool ?? true
     }
@@ -48,4 +55,3 @@ final class SettingsStore: ObservableObject {
         static let relayingEnabled = "bejuco.relayingEnabled"
     }
 }
-

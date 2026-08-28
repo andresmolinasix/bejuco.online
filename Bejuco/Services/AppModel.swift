@@ -26,7 +26,7 @@ final class AppModel: ObservableObject {
         store = MessageStore()
         location = LocationService()
         mesh = MeshService(nodeId: identity.nodeId)
-        gateway = GatewayService(store: store, settings: settings)
+        gateway = GatewayService(store: store, settings: settings, gatewayId: identity.nodeId)
         earthquakeService = EarthquakeService()
         backgroundTasks = BackgroundTaskCoordinator()
         notifications = NotificationService()

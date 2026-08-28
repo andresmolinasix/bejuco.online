@@ -59,6 +59,26 @@ final class BejucoTests: XCTestCase {
         try? FileManager.default.removeItem(at: url)
     }
 
+    func testGatewayBatchMatchesPlatformContract() throws {
+        let identity = IdentityService()
+        let envelope = identity.sign(BejucoEnvelope(
+            type: .distress,
+            originId: identity.nodeId,
+            location: GeoLocation(lat: 5.69, lon: -76.66),
+            priority: .sos,
+            payload: ["name": "Ana"]
+        ))
+
+        let data = try ProtocolCodec.encode(GatewayBatch(gatewayId: "ios-gateway", messages: [envelope]))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let messages = try XCTUnwrap(object["messages"] as? [[String: Any]])
+
+        XCTAssertEqual(object["gatewayId"] as? String, "ios-gateway")
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages.first?["messageId"] as? String, envelope.messageId)
+        XCTAssertEqual(messages.first?["originPublicKey"] as? String, identity.publicKey)
+    }
+
     func testAndroidEnvelopeUsesHexEd25519WireShape() throws {
         let identity = IdentityService()
         let envelope = BejucoEnvelope(

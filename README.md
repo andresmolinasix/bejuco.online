@@ -71,7 +71,12 @@ La prueba Android↔iOS requiere dos teléfonos físicos con Bluetooth y permiso
 
 ## Backend
 
-El endpoint se configura en `Ajustes`. El valor inicial es `https://bejuco.online/v1/messages/batch` como placeholder configurable; si el backend todavía no está desplegado, los paquetes siguen persistiendo localmente y quedan en estado `failed` para reintento.
+El endpoint se configura en `Ajustes`. El valor inicial de desarrollo es
+`https://bejuco-dev-ingest-api-w6gswgwgyq-uc.a.run.app/v1/messages/batch` y el
+cliente envía el contrato `{"gatewayId":"…","messages":[…]}` definido por
+`bejuco-platform`. La API de Cloud Run es pública y no requiere credenciales de
+Cloud SQL en el teléfono. Si el backend no está disponible, los paquetes siguen
+persistiendo localmente y quedan en estado `failed` para reintento.
 
 ## Protocolo
 
