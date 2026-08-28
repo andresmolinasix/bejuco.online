@@ -27,6 +27,7 @@
 		C00000000000000000000012 /* MessagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000012 /* MessagesView.swift */; };
 		C00000000000000000000013 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000013 /* SettingsView.swift */; };
 		C00000000000000000000014 /* BejucoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000014 /* BejucoTests.swift */; };
+		C00000000000000000000015 /* BitChatPacketCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000017 /* BitChatPacketCodec.swift */; };
 		C00000000000000000000020 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000001 /* Foundation.framework */; };
 		C00000000000000000000021 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000002 /* SwiftUI.framework */; };
 		C00000000000000000000022 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000003 /* CoreBluetooth.framework */; };
@@ -73,6 +74,7 @@
 		B00000000000000000000014 /* BejucoTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BejucoTests.swift; sourceTree = "<group>"; };
 		B00000000000000000000015 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B00000000000000000000016 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B00000000000000000000017 /* BitChatPacketCodec.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BitChatPacketCodec.swift; sourceTree = "<group>"; };
 		D00000000000000000000001 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		D00000000000000000000002 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		D00000000000000000000003 /* CoreBluetooth.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBluetooth.framework; path = System/Library/Frameworks/CoreBluetooth.framework; sourceTree = SDKROOT; };
@@ -149,6 +151,7 @@
 				B0000000000000000000000A /* MeshService.swift */,
 				B0000000000000000000000B /* MessageStore.swift */,
 				B0000000000000000000000C /* ProtocolCodec.swift */,
+				B00000000000000000000017 /* BitChatPacketCodec.swift */,
 				B0000000000000000000000D /* SettingsStore.swift */,
 			);
 			path = Services;
@@ -327,6 +330,7 @@
 				C0000000000000000000000A /* MeshService.swift in Sources */,
 				C0000000000000000000000B /* MessageStore.swift in Sources */,
 				C0000000000000000000000C /* ProtocolCodec.swift in Sources */,
+				C00000000000000000000015 /* BitChatPacketCodec.swift in Sources */,
 				C0000000000000000000000D /* SettingsStore.swift in Sources */,
 				C0000000000000000000000E /* Theme.swift in Sources */,
 				C0000000000000000000000F /* ContentView.swift in Sources */,

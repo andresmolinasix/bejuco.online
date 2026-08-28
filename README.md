@@ -8,10 +8,10 @@ El proyecto ya está configurado como `Bejuco.xcodeproj` y compila con Xcode 26.
 
 - SwiftUI con pantallas de inicio, emergencia, paquetes y ajustes.
 - `BejucoEnvelope` v1 con timestamps Unix en milisegundos, TTL, `hopCount`/`hopLimit`, ubicación y payload.
-- Firma ECDSA P-256 con CryptoKit e identidad pseudónima conservada en Keychain.
+- Firma Ed25519 con CryptoKit e identidad pseudónima conservada en Keychain, compatible con Android.
 - Persistencia local JSON en Application Support con protección de archivos.
 - Deduplicación por `messageId` y store-carry-forward.
-- Core Bluetooth como central y periférico simultáneamente, con inventario, solicitud de faltantes y transferencia por chunks GATT.
+- Core Bluetooth como central y periférico simultáneamente, con el transporte BitChat de Android y el transporte nativo iOS para inventario/store-and-forward.
 - Estados `DISTRESS`, `SAFE` y `SUPPLY_REQUEST`.
 - Consulta del feed GeoJSON de terremotos de USGS.
 - Cola de entrega HTTP `POST /v1/messages/batch` cuando vuelve Internet.
@@ -60,9 +60,9 @@ La ejecución en segundo plano de iOS depende de las reglas de Core Bluetooth de
 
 ## Prueba con Android
 
-La app iOS de este corte se puede instalar y probar de forma independiente en un iPhone físico. La interoperabilidad BLE directa con la app Android del repositorio `bejuco.online` todavía requiere el adaptador de transporte BitChat: Android anuncia el servicio `F47B5E2D-4A9E-4C5A-9B3F-8E1D2C3A4B5C`, usa un characteristic único y encapsula los paquetes como `BEJUCO_ENVELOPE (0x30)`, mientras que este corte iOS usa el servicio `A7E10000-7B5A-4D3E-9A11-0B7A00000001` con frames de control y transferencia propios.
+La interoperabilidad BLE directa ya está implementada para el contrato actual de Android: iOS anuncia y busca `F47B5E2D-4A9E-4C5A-9B3F-8E1D2C3A4B5C`, usa el characteristic `A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D`, encapsula los envelopes como `BEJUCO_ENVELOPE (0x30)` y soporta compresión, padding y fragmentación BitChat v1.
 
-En consecuencia, antes del adaptador se pueden validar UI, ubicación, persistencia, firma, gateway y mesh iOS↔iOS; no se debe declarar todavía una prueba BLE Android↔iOS como exitosa.
+La prueba Android↔iOS requiere dos teléfonos físicos con Bluetooth y permisos habilitados. En el Android actual los tipos Bejuco aceptados por su enum son `DISTRESS` y `SAFE`; `SUPPLY_REQUEST` continúa disponible en el transporte nativo iOS hasta que Android amplíe su contrato. El simulador solo sirve para validar UI, persistencia y codec; no sustituye una prueba BLE real.
 
 ## Backend
 

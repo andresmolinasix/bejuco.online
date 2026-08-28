@@ -25,6 +25,7 @@ enum BejucoMessageType: String, Codable, CaseIterable, Identifiable {
 }
 
 enum BejucoPriority: String, Codable, CaseIterable, Identifiable {
+    case sos = "SOS"
     case critical = "CRITICAL"
     case high = "HIGH"
     case normal = "NORMAL"
@@ -33,6 +34,7 @@ enum BejucoPriority: String, Codable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .sos: return "SOS"
         case .critical: return "Crítica"
         case .high: return "Alta"
         case .normal: return "Normal"
@@ -76,7 +78,7 @@ struct BejucoEnvelope: Codable, Identifiable, Hashable {
 
     let version: Int
     let messageId: String
-    let eventId: String
+    let eventId: String?
     let type: BejucoMessageType
     let originId: String
     let createdAt: Int64
@@ -109,7 +111,7 @@ struct BejucoEnvelope: Codable, Identifiable, Hashable {
 
     init(
         messageId: String = UUID().uuidString,
-        eventId: String = "local-event",
+        eventId: String? = "local-event",
         type: BejucoMessageType,
         originId: String,
         createdAt: Date = Date(),

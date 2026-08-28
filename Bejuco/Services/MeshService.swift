@@ -21,9 +21,15 @@ enum MeshRuntimeState: String {
 }
 
 enum BejucoBLE {
+    // Legacy native iOS transport kept for backwards-compatible iOS↔iOS
+    // testing while the Android-compatible transport is rolled out.
     static let service = CBUUID(string: "A7E10000-7B5A-4D3E-9A11-0B7A00000001")
     static let control = CBUUID(string: "A7E10001-7B5A-4D3E-9A11-0B7A00000001")
     static let transfer = CBUUID(string: "A7E10002-7B5A-4D3E-9A11-0B7A00000001")
+
+    // BitChat/Android mesh contract.
+    static let bitChatService = CBUUID(string: "F47B5E2D-4A9E-4C5A-9B3F-8E1D2C3A4B5C")
+    static let bitChatPacket = CBUUID(string: "A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D")
 }
 
 @MainActor
@@ -43,14 +49,19 @@ final class MeshService: NSObject, ObservableObject {
     private var advertisedService: CBMutableService?
     private var controlCharacteristic: CBMutableCharacteristic?
     private var transferCharacteristic: CBMutableCharacteristic?
+    private var bitChatService: CBMutableService?
+    private var bitChatPacketCharacteristic: CBMutableCharacteristic?
 
     private var peripherals: [UUID: CBPeripheral] = [:]
     private var controlCharacteristics: [UUID: CBCharacteristic] = [:]
     private var transferCharacteristics: [UUID: CBCharacteristic] = [:]
+    private var bitChatPacketCharacteristics: [UUID: CBCharacteristic] = [:]
     private var connectedPeripheralIDs = Set<UUID>()
     private var subscribedCentrals: [UUID: CBCentral] = [:]
+    private var subscribedBitChatCentrals: [UUID: CBCentral] = [:]
     private var inventoryPages: [UUID: InventoryAssembly] = [:]
     private var transferBuffers: [UUID: [String: TransferAssembly]] = [:]
+    private var bitChatFragmentBuffers: [UUID: [String: BitChatFragmentAssembly]] = [:]
     private var pendingWrites: [UUID: [PendingWrite]] = [:]
     private var activeWrites = Set<UUID>()
     private var pendingNotifications: [UUID: [PendingNotification]] = [:]
@@ -80,9 +91,13 @@ final class MeshService: NSObject, ObservableObject {
     func announceLocalInventory() {
         for peerID in connectedPeripheralIDs {
             sendHello(to: peerID)
+            sendStoredBitChatMessages(to: peerID)
         }
         for peerID in subscribedCentrals.keys {
             sendHello(to: peerID)
+        }
+        for peerID in subscribedBitChatCentrals.keys {
+            sendStoredBitChatMessages(to: peerID)
         }
     }
 
@@ -104,28 +119,40 @@ final class MeshService: NSObject, ObservableObject {
         connectedPeripheralIDs.removeAll()
         controlCharacteristics.removeAll()
         transferCharacteristics.removeAll()
+        bitChatPacketCharacteristics.removeAll()
         pendingWrites.removeAll()
         activeWrites.removeAll()
         inventoryPages.removeAll()
         transferBuffers.removeAll()
+        bitChatFragmentBuffers.removeAll()
         subscribedCentrals.removeAll()
+        subscribedBitChatCentrals.removeAll()
         pendingNotifications.removeAll()
         advertisedService = nil
         controlCharacteristic = nil
         transferCharacteristic = nil
+        bitChatService = nil
+        bitChatPacketCharacteristic = nil
         connectedPeerCount = 0
+    }
+
+    private func updateConnectedPeerCount() {
+        var peers = connectedPeripheralIDs
+        peers.formUnion(subscribedCentrals.keys)
+        peers.formUnion(subscribedBitChatCentrals.keys)
+        connectedPeerCount = peers.count
     }
 
     private func startScanning() {
         centralManager.scanForPeripherals(
-            withServices: [BejucoBLE.service],
+            withServices: [BejucoBLE.service, BejucoBLE.bitChatService],
             options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
         )
         lastEvent = "Buscando nodos cercanos…"
     }
 
     private func configurePeripheral() {
-        guard advertisedService == nil else { return }
+        guard advertisedService == nil, bitChatService == nil else { return }
 
         let control = CBMutableCharacteristic(
             type: BejucoBLE.control,
@@ -145,8 +172,21 @@ final class MeshService: NSObject, ObservableObject {
         controlCharacteristic = control
         transferCharacteristic = transfer
         peripheralManager.add(service)
+
+        let bitChatPacket = CBMutableCharacteristic(
+            type: BejucoBLE.bitChatPacket,
+            properties: [.write, .writeWithoutResponse, .notify],
+            value: nil,
+            permissions: [.writeable]
+        )
+        let bitChatService = CBMutableService(type: BejucoBLE.bitChatService, primary: true)
+        bitChatService.characteristics = [bitChatPacket]
+        self.bitChatService = bitChatService
+        bitChatPacketCharacteristic = bitChatPacket
+        peripheralManager.add(bitChatService)
+
         peripheralManager.startAdvertising([
-            CBAdvertisementDataServiceUUIDsKey: [BejucoBLE.service],
+            CBAdvertisementDataServiceUUIDsKey: [BejucoBLE.service, BejucoBLE.bitChatService],
             CBAdvertisementDataLocalNameKey: "Bejuco-\(nodeId.prefix(6))"
         ])
         lastEvent = "Anunciando y escuchando nodos"
@@ -284,6 +324,112 @@ final class MeshService: NSObject, ObservableObject {
         }
     }
 
+    /// Sends the emergency envelopes that Android can parse through the
+    /// BitChat-compatible outer packet. Android's current Bejuco repository
+    /// supports DISTRESS and SAFE; the other iOS-only message types continue
+    /// using the native iOS transport until Android exposes them.
+    private func sendStoredBitChatMessages(to peerID: UUID) {
+        guard bitChatPacketCharacteristics[peerID] != nil || subscribedBitChatCentrals[peerID] != nil else { return }
+        for envelope in (messageProvider?() ?? []) where envelope.canRelay {
+            guard envelope.type == .distress || envelope.type == .safe else { continue }
+            sendBitChatEnvelope(envelope, to: peerID)
+        }
+    }
+
+    private func sendBitChatEnvelope(_ envelope: BejucoEnvelope, to peerID: UUID) {
+        guard envelope.canRelay,
+              envelope.type == .distress || envelope.type == .safe,
+              let payload = try? AndroidEnvelopeCodec.encode(envelope),
+              let senderID = BitChatPacketCodec.data(fromHex: nodeId) else { return }
+
+        let packet = BitChatPacket(
+            type: BitChatPacketCodec.bejucoEnvelopeType,
+            ttl: 7,
+            timestamp: UInt64(max(0, Date().timeIntervalSince1970 * 1_000)),
+            senderID: senderID,
+            recipientID: BitChatPacketCodec.broadcastRecipient,
+            payload: payload
+        )
+        guard let frames = BitChatPacketCodec.prepareForBLE(packet) else {
+            lastEvent = "No se pudo preparar el paquete para Android"
+            return
+        }
+        for frame in frames {
+            sendBitChatFrame(frame, to: peerID)
+        }
+        lastEvent = "Paquete Bejuco enviado por BitChat"
+    }
+
+    private func sendBitChatFrame(_ data: Data, to peerID: UUID) {
+        if peripherals[peerID] != nil, bitChatPacketCharacteristics[peerID] != nil {
+            enqueueWrite(data, kind: .bitChatPacket, to: peerID)
+        } else if let central = subscribedBitChatCentrals[peerID], let characteristic = bitChatPacketCharacteristic {
+            notify(data, characteristic: characteristic, central: central, peerID: peerID)
+        }
+    }
+
+    private func handleBitChatData(_ data: Data, from peerID: UUID) {
+        guard let packet = BitChatPacketCodec.decode(data) else {
+            lastEvent = "Se recibió un paquete BitChat inválido"
+            return
+        }
+
+        if packet.type == BitChatPacketCodec.fragmentType {
+            handleBitChatFragment(packet, from: peerID)
+        } else {
+            handleBitChatPacket(packet)
+        }
+    }
+
+    private func handleBitChatPacket(_ packet: BitChatPacket) {
+        guard packet.type == BitChatPacketCodec.bejucoEnvelopeType,
+              let envelope = try? AndroidEnvelopeCodec.decode(packet.payload),
+              envelope.version <= BejucoEnvelope.protocolVersion else { return }
+
+        lastEvent = "Paquete Bejuco recibido por BitChat"
+        onEnvelopeReceived?(envelope.relayed())
+    }
+
+    private func handleBitChatFragment(_ packet: BitChatPacket, from peerID: UUID) {
+        guard let fragment = BitChatFragment(payload: packet.payload),
+              fragment.total <= BitChatPacketCodec.maxFragments,
+              !fragment.data.isEmpty else { return }
+
+        var peerFragments = bitChatFragmentBuffers[peerID] ?? [:]
+        var assembly = peerFragments[fragment.fragmentID.hexString] ?? BitChatFragmentAssembly(
+            total: fragment.total,
+            originalType: fragment.originalType,
+            chunks: [:]
+        )
+        guard assembly.total == fragment.total, assembly.originalType == fragment.originalType else {
+            peerFragments[fragment.fragmentID.hexString] = nil
+            bitChatFragmentBuffers[peerID] = peerFragments
+            return
+        }
+
+        assembly.chunks[fragment.index] = fragment.data
+        let bufferedBytes = assembly.chunks.values.reduce(0) { $0 + $1.count }
+        guard bufferedBytes <= 1_048_576 else {
+            peerFragments[fragment.fragmentID.hexString] = nil
+            bitChatFragmentBuffers[peerID] = peerFragments
+            return
+        }
+
+        if assembly.chunks.count == assembly.total {
+            let assembled = (0..<assembly.total).reduce(into: Data()) { data, index in
+                data.append(assembly.chunks[index] ?? Data())
+            }
+            peerFragments[fragment.fragmentID.hexString] = nil
+            bitChatFragmentBuffers[peerID] = peerFragments
+            guard let original = BitChatPacketCodec.decode(assembled),
+                  original.type == assembly.originalType else { return }
+            handleBitChatPacket(original)
+        } else {
+            peerFragments[fragment.fragmentID.hexString] = assembly
+            bitChatFragmentBuffers[peerID] = peerFragments
+        }
+    }
+
     private func enqueueWrite(_ data: Data, kind: MeshWriteKind, to peerID: UUID) {
         pendingWrites[peerID, default: []].append(PendingWrite(data: data, kind: kind))
         flushWrites(to: peerID)
@@ -297,7 +443,15 @@ final class MeshService: NSObject, ObservableObject {
 
         let pending = queue.removeFirst()
         pendingWrites[peerID] = queue
-        let characteristic = pending.kind == .control ? controlCharacteristics[peerID] : transferCharacteristics[peerID]
+        let characteristic: CBCharacteristic?
+        switch pending.kind {
+        case .control:
+            characteristic = controlCharacteristics[peerID]
+        case .transfer:
+            characteristic = transferCharacteristics[peerID]
+        case .bitChatPacket:
+            characteristic = bitChatPacketCharacteristics[peerID]
+        }
         guard let characteristic else { return }
 
         activeWrites.insert(peerID)
@@ -345,9 +499,16 @@ private struct TransferAssembly {
     var chunks: [Int: String]
 }
 
+private struct BitChatFragmentAssembly {
+    let total: Int
+    let originalType: UInt8
+    var chunks: [Int: Data]
+}
+
 private enum MeshWriteKind {
     case control
     case transfer
+    case bitChatPacket
 }
 
 private struct PendingWrite {
@@ -359,6 +520,12 @@ private struct PendingNotification {
     let data: Data
     let characteristic: CBMutableCharacteristic
     let central: CBCentral
+}
+
+private extension Data {
+    var hexString: String {
+        map { String(format: "%02x", $0) }.joined()
+    }
 }
 
 private extension Array {
@@ -407,10 +574,10 @@ extension MeshService: @preconcurrency CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         let id = peripheral.identifier
         connectedPeripheralIDs.insert(id)
-        connectedPeerCount = connectedPeripheralIDs.count + subscribedCentrals.count
+        updateConnectedPeerCount()
         lastEvent = "Conectado a un nodo cercano"
         peripheral.delegate = self
-        peripheral.discoverServices([BejucoBLE.service])
+        peripheral.discoverServices([BejucoBLE.service, BejucoBLE.bitChatService])
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
@@ -422,18 +589,26 @@ extension MeshService: @preconcurrency CBCentralManagerDelegate {
         connectedPeripheralIDs.remove(id)
         controlCharacteristics[id] = nil
         transferCharacteristics[id] = nil
+        bitChatPacketCharacteristics[id] = nil
         pendingWrites[id] = nil
         activeWrites.remove(id)
         pendingNotifications[id] = nil
-        connectedPeerCount = connectedPeripheralIDs.count + subscribedCentrals.count
+        bitChatFragmentBuffers[id] = nil
+        updateConnectedPeerCount()
         if central.state == .poweredOn { startScanning() }
     }
 }
 
 extension MeshService: @preconcurrency CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        guard error == nil, let service = peripheral.services?.first(where: { $0.uuid == BejucoBLE.service }) else { return }
-        peripheral.discoverCharacteristics([BejucoBLE.control, BejucoBLE.transfer], for: service)
+        guard error == nil else { return }
+        for service in peripheral.services ?? [] {
+            if service.uuid == BejucoBLE.service {
+                peripheral.discoverCharacteristics([BejucoBLE.control, BejucoBLE.transfer], for: service)
+            } else if service.uuid == BejucoBLE.bitChatService {
+                peripheral.discoverCharacteristics([BejucoBLE.bitChatPacket], for: service)
+            }
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
@@ -446,10 +621,16 @@ extension MeshService: @preconcurrency CBPeripheralDelegate {
             } else if characteristic.uuid == BejucoBLE.transfer {
                 transferCharacteristics[id] = characteristic
                 peripheral.setNotifyValue(true, for: characteristic)
+            } else if characteristic.uuid == BejucoBLE.bitChatPacket {
+                bitChatPacketCharacteristics[id] = characteristic
+                peripheral.setNotifyValue(true, for: characteristic)
             }
         }
         if controlCharacteristics[id] != nil && transferCharacteristics[id] != nil {
             sendHello(to: id)
+        }
+        if bitChatPacketCharacteristics[id] != nil {
+            sendStoredBitChatMessages(to: id)
         }
     }
 
@@ -460,6 +641,8 @@ extension MeshService: @preconcurrency CBPeripheralDelegate {
             handleControl(data, from: id)
         } else if characteristic.uuid == BejucoBLE.transfer {
             handleTransfer(data, from: id)
+        } else if characteristic.uuid == BejucoBLE.bitChatPacket {
+            handleBitChatData(data, from: id)
         }
     }
 
@@ -490,16 +673,25 @@ extension MeshService: @preconcurrency CBPeripheralManagerDelegate {
     }
 
     func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
-        subscribedCentrals[central.identifier] = central
-        connectedPeerCount = connectedPeripheralIDs.count + subscribedCentrals.count
-        sendHello(to: central.identifier)
+        if characteristic.uuid == BejucoBLE.bitChatPacket {
+            subscribedBitChatCentrals[central.identifier] = central
+            sendStoredBitChatMessages(to: central.identifier)
+        } else {
+            subscribedCentrals[central.identifier] = central
+            sendHello(to: central.identifier)
+        }
+        updateConnectedPeerCount()
         lastEvent = "Un nodo se conectó al mesh"
     }
 
     func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didUnsubscribeFrom characteristic: CBCharacteristic) {
-        subscribedCentrals[central.identifier] = nil
+        if characteristic.uuid == BejucoBLE.bitChatPacket {
+            subscribedBitChatCentrals[central.identifier] = nil
+        } else {
+            subscribedCentrals[central.identifier] = nil
+        }
         pendingNotifications[central.identifier] = nil
-        connectedPeerCount = connectedPeripheralIDs.count + subscribedCentrals.count
+        updateConnectedPeerCount()
     }
 
     func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
@@ -518,6 +710,8 @@ extension MeshService: @preconcurrency CBPeripheralManagerDelegate {
                     handleControl(data, from: request.central.identifier)
                 } else if request.characteristic.uuid == BejucoBLE.transfer {
                     handleTransfer(data, from: request.central.identifier)
+                } else if request.characteristic.uuid == BejucoBLE.bitChatPacket {
+                    handleBitChatData(data, from: request.central.identifier)
                 }
             }
             peripheral.respond(to: request, withResult: .success)

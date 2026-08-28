@@ -7,6 +7,8 @@
 - [x] El envelope se serializa y deserializa con campos estables.
 - [x] Una firma válida se verifica después de incrementar `hopCount`.
 - [x] El almacén deduplica paquetes con el mismo `messageId`.
+- [x] El envelope iOS usa Ed25519, hexadecimal y `originId` compatibles con Android.
+- [x] El codec iOS implementa el paquete BitChat v1, compresión y fragmentación.
 
 ## Manuales en dispositivo físico
 
@@ -19,5 +21,15 @@
 - [ ] `hopCount`/`hopLimit` detienen el relay.
 - [ ] C entrega el lote al backend cuando vuelve Internet.
 
-Estas pruebas requieren dos o tres iPhones reales; el simulador no reproduce el transporte BLE entre dispositivos de forma fiable.
+## Android ↔ iOS
 
+- [ ] Android descubre el servicio BitChat de iOS en dos teléfonos físicos.
+- [ ] Un `DISTRESS` originado en iOS aparece en el repositorio Android.
+- [ ] Un `DISTRESS` originado en Android aparece en `Paquetes` de iOS.
+- [ ] Un `SAFE` se intercambia en ambos sentidos.
+- [ ] Un paquete fragmentado se reensambla entre plataformas.
+
+La última validación requiere dispositivos físicos; el simulador no ofrece un
+transporte BLE Android↔iOS fiable.
+
+Estas pruebas requieren dos o tres iPhones reales; el simulador no reproduce el transporte BLE entre dispositivos de forma fiable.

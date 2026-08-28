@@ -16,7 +16,7 @@ enum IdentityServiceError: LocalizedError {
 
 private final class KeychainStore {
     private let service = "online.bejuco.ios.identity"
-    private let account = "p256-signing-key-v1"
+    private let account = "ed25519-signing-key-v1"
 
     func read() throws -> Data? {
         let query: [String: Any] = [
@@ -60,49 +60,66 @@ final class IdentityService {
     let nodeId: String
     let publicKey: String
 
-    private let privateKey: P256.Signing.PrivateKey
+    private let privateKey: Curve25519.Signing.PrivateKey
 
     init() {
         let keychain = KeychainStore()
-        let loadedKey: P256.Signing.PrivateKey
+        let loadedKey: Curve25519.Signing.PrivateKey
 
-		if let stored = try? keychain.read(), let decoded = try? P256.Signing.PrivateKey(rawRepresentation: stored) {
+		if let stored = try? keychain.read(), let decoded = try? Curve25519.Signing.PrivateKey(rawRepresentation: stored) {
             loadedKey = decoded
         } else {
-            let generated = P256.Signing.PrivateKey()
+            let generated = Curve25519.Signing.PrivateKey()
             try? keychain.write(generated.rawRepresentation)
             loadedKey = generated
         }
 
         privateKey = loadedKey
         let publicData = loadedKey.publicKey.rawRepresentation
-        publicKey = publicData.base64EncodedString()
-        let digest = SHA256.hash(data: publicData)
-        nodeId = digest.prefix(16).map { String(format: "%02x", $0) }.joined()
+        publicKey = publicData.map { String(format: "%02x", $0) }.joined()
+        // Android derives both its mesh peer ID and Bejuco origin ID from the
+        // UTF-8 bytes of the lowercase public-key hex string, then keeps the
+        // first eight digest bytes (16 hexadecimal characters).
+        let digest = SHA256.hash(data: Data(publicKey.utf8))
+        nodeId = digest.prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
     func sign(_ envelope: BejucoEnvelope) -> BejucoEnvelope {
         var unsigned = envelope
         unsigned.originPublicKey = publicKey
         unsigned.signature = nil
-        guard let data = try? ProtocolCodec.signingData(for: unsigned),
+        guard let data = try? AndroidEnvelopeCodec.signingData(for: unsigned),
               let signature = try? privateKey.signature(for: data) else {
             return unsigned
         }
-        unsigned.signature = signature.derRepresentation.base64EncodedString()
+        unsigned.signature = signature.map { String(format: "%02x", $0) }.joined()
         return unsigned
     }
 
     func verify(_ envelope: BejucoEnvelope) -> Bool {
         guard let encodedKey = envelope.originPublicKey,
-              let publicData = Data(base64Encoded: encodedKey),
-              let publicKey = try? P256.Signing.PublicKey(rawRepresentation: publicData),
+              let publicData = Data(hexString: encodedKey),
+              let publicKey = try? Curve25519.Signing.PublicKey(rawRepresentation: publicData),
               let encodedSignature = envelope.signature,
-              let signatureData = Data(base64Encoded: encodedSignature),
-              let signature = try? P256.Signing.ECDSASignature(derRepresentation: signatureData),
-              let signingData = try? ProtocolCodec.signingData(for: envelope) else {
+              let signatureData = Data(hexString: encodedSignature),
+              let signingData = try? AndroidEnvelopeCodec.signingData(for: envelope) else {
             return false
         }
-        return publicKey.isValidSignature(signature, for: signingData)
+        return publicKey.isValidSignature(signatureData, for: signingData)
+    }
+}
+
+private extension Data {
+    init?(hexString: String) {
+        guard hexString.count.isMultiple(of: 2) else { return nil }
+        var bytes = Data(capacity: hexString.count / 2)
+        var index = hexString.startIndex
+        while index < hexString.endIndex {
+            let next = hexString.index(index, offsetBy: 2)
+            guard let byte = UInt8(hexString[index..<next], radix: 16) else { return nil }
+            bytes.append(byte)
+            index = next
+        }
+        self = bytes
     }
 }
